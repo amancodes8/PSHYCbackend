@@ -1,33 +1,62 @@
 const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
-const jwt = require("jsonwebtoken");
+const { protect } = require("../middleware/authMiddleware"); // You'll need to create this
 
-router.post("/register", async (req, res) => {
+// @desc    Update user profile
+// @route   PUT /api/users/profile
+// @access  Private
+router.put("/profile", protect, async (req, res) => {
   try {
-    const { name, email, password } = req.body;
-    const exists = await User.findOne({ email });
-    if (exists) return res.status(400).json({ message: "Email already exists" });
+    const user = await User.findById(req.user._id);
 
-    const user = new User({ name, email, password });
-    await user.save();
-    res.status(201).json({ message: "User registered" });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Update allowed fields
+    user.name = req.body.name || user.name;
+    user.email = req.body.email || user.email;
+    user.avatar = req.body.avatar || user.avatar;
+    user.bio = req.body.bio || user.bio;
+    user.gender = req.body.gender || user.gender;
+    user.location = req.body.location || user.location;
+
+    // Handle social links update
+    if (req.body.socialLinks) {
+      user.socialLinks = {
+        twitter: req.body.socialLinks.twitter || user.socialLinks.twitter,
+        facebook: req.body.socialLinks.facebook || user.socialLinks.facebook,
+        linkedin: req.body.socialLinks.linkedin || user.socialLinks.linkedin
+      };
+    }
+
+    // Handle preferences update
+    if (req.body.preferences) {
+      user.preferences = {
+        theme: req.body.preferences.theme || user.preferences.theme,
+        notifications: req.body.preferences.notifications !== undefined 
+          ? req.body.preferences.notifications 
+          : user.preferences.notifications
+      };
+    }
+
+    const updatedUser = await user.save();
+
+    res.json({
+      _id: updatedUser._id,
+      name: updatedUser.name,
+      email: updatedUser.email,
+      avatar: updatedUser.avatar,
+      bio: updatedUser.bio,
+      gender: updatedUser.gender,
+      location: updatedUser.location,
+      socialLinks: updatedUser.socialLinks,
+      preferences: updatedUser.preferences
+    });
+
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-router.post("/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email });
-    if (!user || !(await user.comparePassword(password)))
-      return res.status(401).json({ message: "Invalid credentials" });
-
-    const token = jwt.sign({ userId: user._id, isAdmin: user.isAdmin }, process.env.JWT_SECRET);
-    res.json({ token, user: { id: user._id, name: user.name, isAdmin: user.isAdmin } });
-  } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    res.status(400).json({ message: err.message });
   }
 });
 
